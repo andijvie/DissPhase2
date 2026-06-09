@@ -68,6 +68,9 @@ module simpleFMClerkExt_class
     ! NEW: Fundamental eigenvector for scaling particles
     real(defReal),dimension(:),allocatable   :: eigVec   
 
+    ! NEW: Stores NOT-normalized FM
+    real(defReal), dimension(:,:), allocatable :: tallyMatrix
+
     ! Settings
     logical(defBool) :: handleVirtual = .true.
 
@@ -145,6 +148,10 @@ contains
     ! NEW: Allocate fundamental eigenvector for scaling particles
     allocate(self % eigVec(self % N))   
     self % eigVec = ONE
+
+    ! NEW: Allocate space and initialize the unnormalized matrix
+    allocate(self % tallyMatrix(self % N, self % N))
+    self % matrix = ZERO
 
     ! Initialise response
     call self % resp % build(macroNuFission)
@@ -268,6 +275,9 @@ contains
     ! Note that the matrix memory location starts from memAddress + N
     addr = self % getMemAddress() + sIdx * self % N + cIdx - 1
     call mem % score(score, addr)
+
+    ! NEW: Score to non-normalized matrix
+    self % tallyMatrix(cIdx, sIdx) = self % tallyMatrix(cIdx, sIdx) + score
 
   end subroutine reportInColl
 
@@ -576,6 +586,9 @@ contains
     call kill_super(self)
 
     if (allocated(self % map)) deallocate(self % map)
+
+    ! NEW: deallocate matrix
+    if (allocated(self % matrix)) deallocate(self % matrix)
 
     self % N = 0
     self % handleVirtual = .true.
