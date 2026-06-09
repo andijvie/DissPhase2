@@ -71,6 +71,9 @@ module simpleFMClerkExt_class
     ! NEW: Stores NOT-normalized FM
     real(defReal), dimension(:,:), allocatable :: tallyMatrix
 
+    ! NEW: Stores normalized FM
+    real(defReal), dimension(:,:), allocatable :: matrix
+
     ! Settings
     logical(defBool) :: handleVirtual = .true.
 
@@ -149,8 +152,10 @@ contains
     allocate(self % eigVec(self % N))   
     self % eigVec = ONE
 
-    ! NEW: Allocate space and initialize the unnormalized matrix
+    ! NEW: Allocate space and initialize the normalized and unnormalized matrix
     allocate(self % tallyMatrix(self % N, self % N))
+    allocate(self % matrix(self % N, self % N))
+    self % tallyMatrix = ZERO
     self % matrix = ZERO
 
     ! Initialise response
@@ -294,9 +299,7 @@ contains
     integer(longInt)                    :: addrFM
     real(defReal)                       :: normFactor
 
-    ! New: normalize every cycle
-    !if (mem % lastCycle()) then
-    if (.true.) then
+    if (mem % lastCycle()) then
       ! Set address to the start of Fission Matrix
       ! Decrease by 1 to get correct address on the first iteration of the loop
       addrFM  = self % getMemAddress() + self % N - 1
@@ -317,6 +320,17 @@ contains
       end do
 
     end if
+
+    ! New: normalize every cycle
+    do j = 1, self % N
+      ! Calculate normalisation factor
+      normFactor = mem % getScore(self % getMemAddress() + i - 1)
+      if (normFactor /= ZERO) normFactor = ONE / normFactor
+      
+      do i = 1, self % N
+        self % matrix(i,j) = self % tallyMatrix(i,j) * normFactor
+      end do
+    end do
 
     ! NEW: Obtain the fission matrix eigenvector
     call self % solve()
@@ -587,7 +601,8 @@ contains
 
     if (allocated(self % map)) deallocate(self % map)
 
-    ! NEW: deallocate matrix
+    ! NEW: deallocate matrices
+    if (allocated(self % tallyMatrix)) deallocate(self % tallyMatrix)
     if (allocated(self % matrix)) deallocate(self % matrix)
 
     self % N = 0
