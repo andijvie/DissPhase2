@@ -1,4 +1,4 @@
-module simpleFMClerk_class
+module simpleFMClerkExt_class
 
   use numPrecision
   use tallyCodes
@@ -58,12 +58,15 @@ module simpleFMClerk_class
   !!      map { <TallyMapDef> }
   !!  }
   !!
-  type, public, extends(tallyClerk) :: simpleFMClerk
+  type, public, extends(tallyClerk) :: simpleFMClerkExt
     private
     !! Map defining the discretisation
     class(tallyMap), allocatable :: map
     type(macroResponse)          :: resp
     integer(shortInt)            :: N = 0 !! Number of bins
+
+    ! NEW: Fundamental eigenvector for scaling particles
+    real(defReal),dimension(:),allocatable   :: eigVec   
 
     ! Settings
     logical(defBool) :: handleVirtual = .true.
@@ -89,7 +92,10 @@ module simpleFMClerk_class
     ! Deconstructor
     procedure  :: kill
 
-  end type simpleFMClerk
+    ! NEW: Solve for the FM eigenvector
+    procedure  :: solve 
+
+  end type simpleFMClerkExt
 
   !!
   !! Fission matrix result class
@@ -103,6 +109,18 @@ module simpleFMClerk_class
     real(defReal), dimension(:,:,:), allocatable :: FM     ! FM proper
   end type FMResult
 
+
+  !!
+  !! NEW: FM eigenvector result class
+  !!   Stored in column first order
+  !!    dim1 -> target bin
+  !!    dim2 -> orgin bin
+  !!
+  type,public, extends( tallyResult) :: FMeigen
+    integer(shortInt)                       :: N  = 0 ! Size of FM
+    real(defReal), dimension(:),allocatable :: eigVec ! FM eigenvector
+  end type FMeigen
+
 contains
 
   !!
@@ -111,7 +129,7 @@ contains
   !! See tallyClerk_inter for details
   !!
   subroutine init(self, dict, name)
-    class(simpleFMClerk), intent(inout) :: self
+    class(simpleFMClerkExt), intent(inout) :: self
     class(dictionary), intent(in)       :: dict
     character(nameLen), intent(in)      :: name
 
@@ -123,6 +141,10 @@ contains
 
     ! Read size of the map
     self % N = self % map % bins(0)
+
+    ! NEW: Allocate fundamental eigenvector for scaling particles
+    allocate(self % eigVec(self % N))   
+    self % eigVec = ONE
 
     ! Initialise response
     call self % resp % build(macroNuFission)
@@ -138,7 +160,7 @@ contains
   !! See tallyClerk_inter for details
   !!
   function validReports(self) result(validCodes)
-    class(simpleFMClerk),intent(in)            :: self
+    class(simpleFMClerkExt),intent(in)            :: self
     integer(shortInt),dimension(:),allocatable :: validCodes
 
     validCodes = [inColl_CODE, cycleStart_CODE, closeCycle_CODE]
@@ -151,7 +173,7 @@ contains
   !! See tallyClerk_inter for details
   !!
   elemental function getSize(self) result(S)
-    class(simpleFMClerk), intent(in) :: self
+    class(simpleFMClerkExt), intent(in) :: self
     integer(shortInt)                :: S
 
     S = self % N * (self % N + 1)
@@ -166,7 +188,7 @@ contains
   !! See tallyClerk_inter for details
   !!
   subroutine reportCycleStart(self, start, mem)
-    class(simpleFMClerk), intent(inout) :: self
+    class(simpleFMClerkExt), intent(inout) :: self
     class(particleDungeon), intent(in)  :: start
     type(scoreMemory), intent(inout)    :: mem
     integer(shortInt)                   :: idx, i
@@ -195,7 +217,7 @@ contains
   !! See tallyClerk_inter for details
   !!
   subroutine reportInColl(self, p, xsData, mem, virtual)
-    class(simpleFMClerk), intent(inout)  :: self
+    class(simpleFMClerkExt), intent(inout)  :: self
     class(particle), intent(in)          :: p
     class(nuclearDatabase),intent(inout) :: xsData
     type(scoreMemory), intent(inout)     :: mem
@@ -205,7 +227,7 @@ contains
     integer(shortInt)                    :: sIdx, cIdx
     integer(longInt)                     :: addr
     real(defReal)                        :: score, flux
-    character(100), parameter :: Here = 'reportInColl simpleFMClerk_class.f90'
+    character(100), parameter :: Here = 'reportInColl simpleFMClerkExt_class.f90'
 
     ! Return if collision is virtual but virtual collision handling is off
     if ((.not. self % handleVirtual) .and. virtual) return
@@ -255,14 +277,16 @@ contains
   !! See tallyClerk_inter for details
   !!
   subroutine closeCycle(self, end, mem)
-    class(simpleFMClerk), intent(inout) :: self
+    class(simpleFMClerkExt), intent(inout) :: self
     class(particleDungeon), intent(in)  :: end
     type(scoreMemory), intent(inout)    :: mem
     integer(shortInt)                   :: i, j
     integer(longInt)                    :: addrFM
     real(defReal)                       :: normFactor
 
-    if (mem % lastCycle()) then
+    ! New: normalize every cycle
+    !if (mem % lastCycle()) then
+    if (.true.) then
       ! Set address to the start of Fission Matrix
       ! Decrease by 1 to get correct address on the first iteration of the loop
       addrFM  = self % getMemAddress() + self % N - 1
@@ -284,7 +308,72 @@ contains
 
     end if
 
+    ! NEW: Obtain the fission matrix eigenvector
+    call self % solve()
+    self % eigVec = self % eigVec / sum(self % eigVec)
+    print *,'Eigenvector'
+    print *, self % eigVec
+
   end subroutine closeCycle
+
+
+  !!
+  !! NEW:
+  !! Solve the fission matrix eigenvalue problem
+  !! by power iteration
+  !!
+  subroutine solve(self)
+    class(fissionMatrixClerk), intent(inout) :: self
+    real(defReal), dimension(:), allocatable :: b
+    real(defReal)                            :: tol, err
+    integer(shortInt)                        :: it, i, j, itMax
+
+    ! NEW: stores total weight
+    real(defReal)                            :: totWgt 
+
+    tol = 1.0E-7
+    err = ONE
+    it = 0
+    itMax = 10000
+    allocate(b(self % N))
+    self % eigVec = ONE
+
+    do it = 1, itMax 
+
+      b = self % eigVec 
+      self % eigVec = ZERO
+
+      ! Matrix-vector multiply
+      do i = 1, self % N
+        do j = 1, self % N
+          self % eigVec(i) = self % eigVec(i) + self % matrix(i,j) * b(j)
+        end do
+      end do
+
+      ! Normalise appropriately
+      self % eigVec = self % eigVec / norm2(self % eigVec)
+      
+      err = norm2(self % eigVec - b) / norm2(b)
+      if (err < tol .and. it > 200) exit
+
+    end do
+
+    if (it >= itMax) print *,'FM iterations did not finish'
+    print *,'Iterations: '
+    print *, it
+
+    ! NEW: calculate total weight
+    totWgt = 0.0
+    do i = 1, self % N
+        totWgt = totWgt + mem % getScore(self % getMemAddress() + i - 1)
+    end do
+
+    ! NEW: multiply by that total weight
+    self % eigVec = self % eigVec * totWgt
+
+  end subroutine solve
+
+
 
   !!
   !! Return result from the clerk for interaction with Physics Package
@@ -295,7 +384,7 @@ contains
   !! See tallyClerk_inter for details
   !!
   pure subroutine getResult(self, res, mem)
-    class(simpleFMClerk), intent(in)               :: self
+    class(simpleFMClerkExt), intent(in)               :: self
     class(tallyResult),allocatable, intent(inout)  :: res
     type(scoreMemory), intent(in)                  :: mem
     integer(shortInt)                              :: i, j
@@ -321,7 +410,7 @@ contains
 
     end if
 
-    ! Load data inti the FM
+    ! Load data into the FM
     select type(res)
       class is(FMresult)
         ! Check size and reallocate space if needed
@@ -356,15 +445,74 @@ contains
   end subroutine getResult
 
   !!
+  !! NEW:
+  !! Return the resulting FM-eigenvector from the clerk for interaction with Physics Package
+  !! Returns FMeigen defined in this module
+  !! If res is already allocated to a FM of fitting size it reuses already allocated space
+  !! This should improve performance when updating estimate of FM each cycle
+  !!
+  !! See tallyClerk_inter for details
+  !!
+  pure subroutine getEigen(self, res, mem)
+    class(fissionMatrixClerk), intent(in)          :: self
+    class(tallyResult),allocatable, intent(inout)  :: res
+    type(scoreMemory), intent(in)                  :: mem
+    integer(shortInt)                              :: i
+
+    ! Allocate result to FMeigen
+    ! Do not deallocate if already allocated to FMeigen
+    ! Its not to nice -> clean up
+    if (allocated(res)) then
+      select type(res)
+        class is (FMeigen)
+          ! Do nothing
+
+        class default ! Reallocate
+          deallocate(res)
+          allocate( FMeigen :: res)
+     end select
+
+    else
+      allocate( FMeigen :: res)
+
+    end if
+
+    ! Load data inti the FM
+    select type(res)
+      class is(FMeigen)
+        ! Check size and reallocate space if needed
+        ! This is horrible. Hove no time to polish. Blame me (MAK)
+        if (allocated(res % eigVec)) then
+          if (any(shape(res % eigVec) /= self % N)) then
+            deallocate(res % eigVec)
+            allocate(res % eigVec(self % N))
+          end if
+        else
+          allocate(res % eigVec(self % N))
+        end if
+
+        ! Set size of the FM
+        res % N = self % N
+
+        ! Load entries
+        do i = 1,self % N
+          res % eigVec(i) = self % eigVec(i)
+        end do
+
+    end select
+
+  end subroutine getEigen
+
+  !!
   !! Display convergance progress on the console
   !!
   !! See tallyClerk_inter for details
   !!
   subroutine display(self, mem)
-    class(simpleFMClerk), intent(in) :: self
+    class(simpleFMClerkExt), intent(in) :: self
     type(scoreMemory), intent(in)    :: mem
 
-    call statusMsg('simpleFMClerk does not support display yet')
+    call statusMsg('simpleFMClerkExt does not support display yet')
 
   end subroutine display
 
@@ -374,7 +522,7 @@ contains
   !! See tallyClerk_inter for details
   !!
   subroutine print(self, outFile, mem)
-    class(simpleFMClerk), intent(in) :: self
+    class(simpleFMClerkExt), intent(in) :: self
     class(outputFile), intent(inout) :: outFile
     type(scoreMemory), intent(in)    :: mem
     integer(shortInt)                :: i
@@ -401,6 +549,17 @@ contains
     end do
     call outFile % endArray()
 
+
+    ! NEW: print eigenvector
+    name = 'eig'
+    call outFile % startArray(name, [self % N, 1])
+    do i = 1,self % N
+      val = self % eigVec(i)
+      call outFile % addResult(val, ZERO)
+    end do
+    call outFile % endArray()
+
+
     call outFile % endBlock()
 
   end subroutine print
@@ -411,7 +570,7 @@ contains
   !! See tallyClerk_inter for details
   !!
   elemental subroutine kill(self)
-    class(simpleFMClerk), intent(inout) :: self
+    class(simpleFMClerkExt), intent(inout) :: self
 
     ! Call superclass
     call kill_super(self)
@@ -425,4 +584,4 @@ contains
 
   end subroutine kill
 
-end module simpleFMClerk_class
+end module simpleFMClerkExt_class
