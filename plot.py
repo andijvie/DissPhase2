@@ -6,6 +6,7 @@
 # CHANGE 6 VARIABLES FOR SCALE (maybe cross sections?)
 
 import json
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, Button
@@ -20,27 +21,38 @@ Sigma_s = Sigma_t-Sigma_a
 Sigma_f = Sigma_a
 Sigma_c = Sigma_a
 A = 1.0
-aHalf = 200
-LHalf = 205
+aHalf = 100
+LHalf = 100
 pop = 100000
 
-readFromFile = False
-isHomg = False
-file_path = Path(r"\\wsl$\Ubuntu\home\andijvie\SCONE\InputFiles\popRed.json")
+readFromFile = True
+isHomg = True
+isFM = False
+fmBins = 8
+write = False
+
+file_path_tallies = Path(r"\\wsl$\Ubuntu\home\andijvie\SCONE\InputFiles\popRed.json")
+file_path_source = Path(r"\\wsl$\Ubuntu\home\andijvie\SCONE\InputFiles\Sources")
+#file_path_sourceFM = Path(r"\\wsl$\Ubuntu\home\andijvie\SCONE\InputFiles\sourcesFM")
+#file_path_sourceInit = Path(r"\\wsl$\Ubuntu\home\andijvie\SCONE\InputFiles\sourcesIn")
+#file_path_sourceS = Path(r"\\wsl$\Ubuntu\home\andijvie\SCONE\InputFiles\sourcesS")
 script_dir = str(Path(__file__).resolve().parent) + "\\data\\"
 ext = "_N" + str(pop) + "L" + str(LHalf) + "a" + str(aHalf) + ".npy"
 if isHomg:
     script_dir += "homg_"
     ext = "_N" + str(pop) + "L" + str(LHalf) + ".npy"
-
-with open(file_path, "r") as f:
-    data = json.load(f)
+if isFM:
+    ext = "_FM" + str(fmBins) + ext
+    
+with open(file_path_tallies, "r") as datafile:
+    data = json.load(datafile)
 
 if readFromFile:
     shannon_entropy = np.load(script_dir + "S" + ext)
 else:
     shannon_entropy = np.array(data["inactive"]["shannon_entropy"]["shannonEntropy"])
-    np.save(script_dir + "S" + ext, shannon_entropy)
+    if write:
+        np.save(script_dir + "S" + ext, shannon_entropy)
 
 generations = np.arange(1, len(shannon_entropy) + 1)
 
@@ -53,42 +65,37 @@ plt.show()
 
 
 
-
-
-#if readFromFile:
-#    flux = np.load(script_dir + "F" + ext)
-#else:
-#    flux_res = data["active"]["flux"]["Res"]
-#    flux = np.array([entry[0][0] for entry in flux_res])
-#    np.save(script_dir + "F" + ext, flux)
-#    
-#x_centers = np.linspace(-LHalf, LHalf, len(flux), False)
-#dX = x_centers[1] - x_centers[0]
-#x_centers += dX/2
-#
-#totFlux = sum(flux) * dX
-#
-#flux /= totFlux
-#
-#plt.figure()
-#plt.plot(x_centers, flux, marker=".", color = 'k')
-
-
-
 if readFromFile:
     flux = np.load(script_dir + "F" + ext)
-    fluxCycles = flux.shape[0]
+    fluxCycles = flux.shape[0]    
+    
 else:
-    flux_res = data["inactive"]["flux"]["Res"]
-    fluxCycles = np.array(flux_res).shape[0]
-
+    fluxHalf = data["inactive"]["flux"]["Res"]
+    fluxCycles = np.array(fluxHalf).shape[0]
+    
     # [cycle][bin][0][0=value, 1=std]
-    flux = np.array([
-        [entry[0][0] for entry in flux_res[cycle]]
+    fluxHalf = np.array([
+        [entry[0][0] for entry in fluxHalf[cycle]]
         for cycle in range(fluxCycles)
     ])
+    
+    all_data_source = []
+    for i in range(1, fluxCycles + 2):
+        filepathSource = os.path.join(file_path_source, f"popRed_source{i}.txt")
+        
+        with open(filepathSource, "r") as sourcefile:
+            values = [float(line.strip()) for line in sourcefile if line.strip()]
+        all_data_source.append(values)
+        
+    fluxNorm = np.array(all_data_source)
+    
+    fluxCycles = fluxCycles * 2 + 1
+    flux = np.empty((fluxCycles, fluxHalf.shape[1]))
+    flux[0::2] = fluxNorm
+    flux[1::2] = fluxHalf
 
-    np.save(script_dir + "F" + ext, flux)
+    if write:
+        np.save(script_dir + "F" + ext, flux)
 
 x_centers = np.linspace(-LHalf, LHalf, flux.shape[1], False)
 dX = x_centers[1] - x_centers[0]
@@ -106,15 +113,17 @@ cycle0 = 0
 ax.set_title(f"Cycle {cycle0}")
 ax.set_xlabel("x")
 ax.set_ylabel("Normalized flux")
+ax.set_xlim((-LHalf, LHalf))
+ax.set_ylim((0, 0.1))
 
 ax_slider = plt.axes([0.2, 0.1, 0.6, 0.03])
 cycle_slider = Slider(
     ax=ax_slider,
     label="Cycle",
     valmin=0,
-    valmax=fluxCycles - 1,
+    valmax=fluxCycles / 2,
     valinit=cycle0,
-    valstep=1
+    valstep=0.5
 )
 ax_prev = plt.axes([0.05, 0.1, 0.08, 0.04])
 btn_prev = Button(ax_prev, "◀")
@@ -122,27 +131,29 @@ ax_next = plt.axes([0.85, 0.1, 0.08, 0.04])
 btn_next = Button(ax_next, "▶")
 
 def prev_cycle(event):
-    cycle = int(cycle_slider.val)
+    cycle = np.round(cycle_slider.val, 1)
     if cycle > 0:
-        cycle_slider.set_val(cycle - 1)
+        cycle_slider.set_val(cycle - 0.5)
 
 def next_cycle(event):
-    cycle = int(cycle_slider.val)
-    if cycle < fluxCycles - 1:
-        cycle_slider.set_val(cycle + 1)
+    cycle = np.round(cycle_slider.val, 1)
+    if (not isFM and cycle < fluxCycles) or cycle < fluxCycles/2:
+        cycle_slider.set_val(cycle + 0.5)
 
 btn_prev.on_clicked(prev_cycle)
 btn_next.on_clicked(next_cycle)
 
 def update(val):
-    cycle = int(cycle_slider.val)
-    line.set_ydata(flux[cycle])
+    cycle = np.round(cycle_slider.val, 1)
+    line.set_ydata(flux[int(cycle * 2)])
     ax.set_title(f"Cycle {cycle}")
-    ax.relim()
-    ax.autoscale_view()
     fig.canvas.draw_idle()
 
 cycle_slider.on_changed(update)
+
+if isFM:
+    for binX in np.linspace(-LHalf, LHalf, fmBins + 1):
+        ax.axvline(binX, linestyle='--', color = 'lightgrey', lw = 1)
 
 if isHomg:
     plt.show()

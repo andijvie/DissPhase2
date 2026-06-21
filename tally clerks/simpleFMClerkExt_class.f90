@@ -27,6 +27,8 @@ module simpleFMClerkExt_class
   ! Tally Response
   use macroResponse_class,        only : macroResponse
 
+  ! TODO: output final FM
+
   implicit none
   private
 
@@ -63,16 +65,21 @@ module simpleFMClerkExt_class
     !! Map defining the discretisation
     class(tallyMap), allocatable :: map
     type(macroResponse)          :: resp
-    integer(shortInt)            :: N = 0 !! Number of bins
+    integer(shortInt)            :: N = 0 ! Number of bins
+    integer(shortInt)            :: window ! NEW: No. of cycles to save
+    logical(defBool)             :: doDebug ! NEW: extra prints
 
     ! NEW: Fundamental eigenvector for scaling particles
-    real(defReal),dimension(:),allocatable   :: eigVec   
+    real(defReal),dimension(:),allocatable       :: eigVec   
 
     ! NEW: Stores NOT-normalized FM
-    real(defReal), dimension(:,:), allocatable :: tallyMatrix
+    real(defReal), dimension(:,:,:), allocatable :: tallyMatrix
 
     ! NEW: Stores normalized FM
-    real(defReal), dimension(:,:), allocatable :: matrix
+    real(defReal), dimension(:,:), allocatable   :: matrix
+
+    ! NEW: Stores the cumilative number of neutrons in the starting bin
+    real(defReal),dimension(:,:),allocatable     :: startWgt
 
     ! Settings
     logical(defBool) :: handleVirtual = .true.
@@ -104,28 +111,28 @@ module simpleFMClerkExt_class
   end type simpleFMClerkExt
 
   !!
-  !! Fission matrix result class
-  !!   Stored in column first order
-  !!    dim1 -> target bin
-  !!    dim2 -> orgin bin
-  !!    dim3 -> 1 is values; 2 is STDs
-  !!
-  type,public, extends( tallyResult) :: FMresult
-    integer(shortInt)                            :: N  = 0 ! Size of FM
-    real(defReal), dimension(:,:,:), allocatable :: FM     ! FM proper
-  end type FMResult
-
-
-  !!
   !! NEW: FM eigenvector result class
   !!   Stored in column first order
   !!    dim1 -> target bin
   !!    dim2 -> orgin bin
   !!
-  type,public, extends( tallyResult) :: FMeigen
+  type,public, extends( tallyResult) :: FMresult
     integer(shortInt)                       :: N  = 0 ! Size of FM
     real(defReal), dimension(:),allocatable :: eigVec ! FM eigenvector
-  end type FMeigen
+  end type FMResult
+
+
+  !!
+  !!  NAMECHANGE: Fission matrix result class
+  !!   Stored in column first order
+  !!    dim1 -> target bin
+  !!    dim2 -> orgin bin
+  !!    dim3 -> 1 is values; 2 is STDs
+  !!
+  type,public, extends( tallyResult) :: FMmatrix
+    integer(shortInt)                            :: N  = 0 ! Size of FM
+    real(defReal), dimension(:,:,:), allocatable :: FM     ! FM proper
+  end type FMmatrix
 
 contains
 
@@ -148,21 +155,32 @@ contains
     ! Read size of the map
     self % N = self % map % bins(0)
 
+    ! NEW: read size of window
+    call dict % getOrDefault(self % window, 'window', 10)
+    print *, '<aqz22> [simpleFMClerkext] FM-window cycles set to:'
+    print *, self % window
+
     ! NEW: Allocate fundamental eigenvector for scaling particles
     allocate(self % eigVec(self % N))   
     self % eigVec = ONE
 
-    ! NEW: Allocate space and initialize the normalized and unnormalized matrix
-    allocate(self % tallyMatrix(self % N, self % N))
+    ! NEW: Allocate space and initialize the normalized/unnormalized matrix and startWgt
+    allocate(self % tallyMatrix(self % window, self % N, self % N))
     allocate(self % matrix(self % N, self % N))
+    allocate(self % startWgt(self % window, self % N))
     self % tallyMatrix = ZERO
     self % matrix = ZERO
+    self % startWgt = ZERO
 
     ! Initialise response
     call self % resp % build(macroNuFission)
 
     ! Handle virtual collisions
     call dict % getOrDefault(self % handleVirtual,'handleVirtual', .true.)
+
+    ! NEW: extra prints:
+    call dict % getOrDefault(self % doDebug, 'doDebug', .false.)
+    if (self % doDebug) print *, '<aqz22> [simpleFMClerkext] DEBUG MESSAGES ENABLED' 
 
   end subroutine init
 
@@ -200,12 +218,23 @@ contains
   !! See tallyClerk_inter for details
   !!
   subroutine reportCycleStart(self, start, mem)
-    class(simpleFMClerkExt), intent(inout) :: self
-    class(particleDungeon), intent(in)  :: start
-    type(scoreMemory), intent(inout)    :: mem
-    integer(shortInt)                   :: idx, i
+    class(simpleFMClerkExt), intent(inout)       :: self
+    class(particleDungeon), intent(in)           :: start
+    type(scoreMemory), intent(inout)             :: mem
+    integer(shortInt)                            :: idx, i
 
-    ! Loop through a population and calculate starting weight in each bin
+    if (self % doDebug) print *, '<aqz22> [simpleFMClerkext] cycle start'
+
+    do i = 2, self % window
+      self % startWgt(i - 1, : ) = self % startWgt(i, : )
+      self % tallyMatrix(i - 1, : , : ) = self % tallyMatrix(i, : , : )
+    end do
+
+    self % startWgt(self % window, : ) = ZERO
+    self % tallyMatrix(self % window, : , : ) = ZERO
+
+
+    ! Loop through a population, calculate starting weight in each bin, add to latest in moving window
     do i = 1, start % popSize()
 
       associate (state => start % get(i))
@@ -213,10 +242,19 @@ contains
         idx = self % map % map(state)
         if (idx == 0) cycle
         call mem % score(state % wgt, self % getMemAddress() + idx - 1)
-
+        self % startWgt(self % window, idx) = self % startWgt(self % window, idx) + state % wgt
       end associate
 
     end do
+
+    if (self % doDebug) then
+      print *, '<aqz22> [simpleFMClerkext] origin bin weights:'
+      do i = 1, self % window
+        print *, self % startWgt(i, :)
+      end do
+    end if
+
+
 
   end subroutine reportCycleStart
 
@@ -282,7 +320,8 @@ contains
     call mem % score(score, addr)
 
     ! NEW: Score to non-normalized matrix
-    self % tallyMatrix(cIdx, sIdx) = self % tallyMatrix(cIdx, sIdx) + score
+    self % tallyMatrix(self % window, cIdx, sIdx) = self % tallyMatrix(self % window, cIdx, sIdx) + score
+    
 
   end subroutine reportInColl
 
@@ -299,7 +338,11 @@ contains
     integer(longInt)                    :: addrFM
     real(defReal)                       :: normFactor
 
+
     if (mem % lastCycle()) then
+
+      if (self % doDebug) print *, '<aqz22> [simpleFMClerkext] cycle end'
+
       ! Set address to the start of Fission Matrix
       ! Decrease by 1 to get correct address on the first iteration of the loop
       addrFM  = self % getMemAddress() + self % N - 1
@@ -319,24 +362,29 @@ contains
 
       end do
 
-    end if
 
-    ! New: normalize every cycle
-    do j = 1, self % N
-      ! Calculate normalisation factor
-      normFactor = mem % getScore(self % getMemAddress() + i - 1)
-      if (normFactor /= ZERO) normFactor = ONE / normFactor
-      
-      do i = 1, self % N
-        self % matrix(i,j) = self % tallyMatrix(i,j) * normFactor
+
+
+
+
+      ! New: normalize every cycle
+      if (self % doDebug) print *, '<aqz22> [simpleFMClerkext] normalise FM factors:'
+
+      do j = 1, self % N
+        ! Calculate normalisation factor
+        normFactor = sum(self % startWgt( : , j))
+        if (normFactor /= ZERO) normFactor = ONE / normFactor
+        
+        if (self % doDebug) write(*,'(F18.15)', advance='no') normFactor
+        
+        do i = 1, self % N
+          self % matrix(i,j) = sum(self % tallyMatrix( : , i,j)) * normFactor
+        end do
       end do
-    end do
 
-    ! NEW: Obtain the fission matrix eigenvector
-    call self % solve()
-    self % eigVec = self % eigVec / sum(self % eigVec)
-    print *,'Eigenvector'
-    print *, self % eigVec
+      ! NEW: Obtain the fission matrix eigenvector
+      call self % solve(mem)
+    end if
 
   end subroutine closeCycle
 
@@ -346,14 +394,31 @@ contains
   !! Solve the fission matrix eigenvalue problem
   !! by power iteration
   !!
-  subroutine solve(self)
-    class(fissionMatrixClerk), intent(inout) :: self
-    real(defReal), dimension(:), allocatable :: b
-    real(defReal)                            :: tol, err
-    integer(shortInt)                        :: it, i, j, itMax
+  subroutine solve(self, mem)
+    class(simpleFMClerkExt), intent(inout)       :: self
+    real(defReal), dimension(:), allocatable     :: b
+    real(defReal)                                :: tol, err
+    integer(shortInt)                            :: it, i, j, itMax
+    type(scoreMemory), intent(inout)             :: mem ! NEW: memory
+    real(defReal), dimension(:,:), allocatable   :: totMat ! NEW
+    
+    if (self % doDebug) then
+      
+      allocate(totMat(self % N, self % N))
+      do j = 1, self % N
+        do i = 1, self % N
+          totMat(i, j) = sum(self % tallyMatrix(:, i, j))
+        end do
+      end do
 
-    ! NEW: stores total weight
-    real(defReal)                            :: totWgt 
+      print *, '<aqz22> [simpleFMClerkext] tally matrix:'
+      print *, totMat
+      print *, '<aqz22> [simpleFMClerkext] FM matrix:'
+      print *, self % matrix
+
+      print *, '<aqz22> [simpleFMClerkext] Start EV-solve...'
+    end if
+
 
     tol = 1.0E-7
     err = ONE
@@ -361,6 +426,7 @@ contains
     itMax = 10000
     allocate(b(self % N))
     self % eigVec = ONE
+
 
     do it = 1, itMax 
 
@@ -380,20 +446,21 @@ contains
       err = norm2(self % eigVec - b) / norm2(b)
       if (err < tol .and. it > 200) exit
 
+
     end do
 
-    if (it >= itMax) print *,'FM iterations did not finish'
-    print *,'Iterations: '
-    print *, it
+    if (it >= itMax) print *,'WARNING: FM iterations did not finish <aqz22> [simpleFMClerkext]'
+  
+    self % eigVec = self % eigVec / sum(self % eigVec)
 
-    ! NEW: calculate total weight
-    totWgt = 0.0
-    do i = 1, self % N
-        totWgt = totWgt + mem % getScore(self % getMemAddress() + i - 1)
-    end do
+    if (self % doDebug) then
+      print *,'<aqz22> [simpleFMClerkext] EV finished. Iterations: '
+      print *, it
+    end if
 
-    ! NEW: multiply by that total weight
-    self % eigVec = self % eigVec * totWgt
+    print *,'FM Eigenvector:'
+    print *, self % eigVec
+
 
   end subroutine solve
 
@@ -415,95 +482,81 @@ contains
     integer(longInt)                               :: addr
     real(defReal)                                  :: val, STD
 
-    ! Allocate result to FMresult
-    ! Do not deallocate if already allocated to FMresult
+    !! Allocate result to FMmatrix
+    !! Do not deallocate if already allocated to FMmatrix
+    !! Its not to nice -> clean up
+    !if (allocated(res)) then
+!
+    !  select type(res)
+    !    class is (FMmatrix)
+    !      ! Do nothing
+    !    class default
+    !      ! Reallocate
+    !      deallocate(res)
+    !      allocate( FMmatrix :: res)
+    !  end select
+!
+    !else
+    !  allocate( FMmatrix :: res)
+!
+    !end if
+!
+    !! Load data into the FM
+    !select type(res)
+    !  class is(FMmatrix)
+    !    ! Check size and reallocate space if needed
+    !    ! This is horrible. Hove no time to polish. Blame me (MAK)
+    !    if (allocated(res % FM)) then
+!
+    !      if (any(shape(res % FM) /= [self % N, self % N, 2])) then
+    !        deallocate(res % FM)
+    !        allocate(res % FM(self % N, self % N, 2))
+    !      end if
+!
+    !    else
+    !      allocate(res % FM(self % N, self % N, 2))
+    !    end if
+!
+    !    ! Set size of the FM
+    !    res % N = self % N
+!
+    !    ! Load entries
+    !    addr = self % getMemAddress() + self % N - 1
+    !    do i = 1, self % N
+    !      do j = 1, self % N
+    !        addr = addr + 1
+    !        call mem % getResult(val, STD, addr)
+    !        res % FM(j, i, 1) = val
+    !        res % FM(j, i, 2) = STD
+    !      end do
+    !    end do
+!
+    !end select
+!
+
+
+    !! NEW: also return the resulting FM-ev
+        ! Allocate result to FMeigen
+    ! Do not deallocate if already allocated to FMeigen
     ! Its not to nice -> clean up
     if (allocated(res)) then
-
       select type(res)
         class is (FMresult)
           ! Do nothing
-        class default
-          ! Reallocate
+
+        class default ! Reallocate
           deallocate(res)
           allocate( FMresult :: res)
-      end select
+     end select
 
     else
       allocate( FMresult :: res)
 
     end if
 
-    ! Load data into the FM
-    select type(res)
-      class is(FMresult)
-        ! Check size and reallocate space if needed
-        ! This is horrible. Hove no time to polish. Blame me (MAK)
-        if (allocated(res % FM)) then
-
-          if (any(shape(res % FM) /= [self % N, self % N, 2])) then
-            deallocate(res % FM)
-            allocate(res % FM(self % N, self % N, 2))
-          end if
-
-        else
-          allocate(res % FM(self % N, self % N, 2))
-        end if
-
-        ! Set size of the FM
-        res % N = self % N
-
-        ! Load entries
-        addr = self % getMemAddress() + self % N - 1
-        do i = 1, self % N
-          do j = 1, self % N
-            addr = addr + 1
-            call mem % getResult(val, STD, addr)
-            res % FM(j, i, 1) = val
-            res % FM(j, i, 2) = STD
-          end do
-        end do
-
-    end select
-
-  end subroutine getResult
-
-  !!
-  !! NEW:
-  !! Return the resulting FM-eigenvector from the clerk for interaction with Physics Package
-  !! Returns FMeigen defined in this module
-  !! If res is already allocated to a FM of fitting size it reuses already allocated space
-  !! This should improve performance when updating estimate of FM each cycle
-  !!
-  !! See tallyClerk_inter for details
-  !!
-  pure subroutine getEigen(self, res, mem)
-    class(fissionMatrixClerk), intent(in)          :: self
-    class(tallyResult),allocatable, intent(inout)  :: res
-    type(scoreMemory), intent(in)                  :: mem
-    integer(shortInt)                              :: i
-
-    ! Allocate result to FMeigen
-    ! Do not deallocate if already allocated to FMeigen
-    ! Its not to nice -> clean up
-    if (allocated(res)) then
-      select type(res)
-        class is (FMeigen)
-          ! Do nothing
-
-        class default ! Reallocate
-          deallocate(res)
-          allocate( FMeigen :: res)
-     end select
-
-    else
-      allocate( FMeigen :: res)
-
-    end if
-
     ! Load data inti the FM
     select type(res)
-      class is(FMeigen)
+      class is(FMresult)
         ! Check size and reallocate space if needed
         ! This is horrible. Hove no time to polish. Blame me (MAK)
         if (allocated(res % eigVec)) then
@@ -525,7 +578,9 @@ contains
 
     end select
 
-  end subroutine getEigen
+  end subroutine getResult
+
+
 
   !!
   !! Display convergance progress on the console
@@ -604,6 +659,7 @@ contains
     ! NEW: deallocate matrices
     if (allocated(self % tallyMatrix)) deallocate(self % tallyMatrix)
     if (allocated(self % matrix)) deallocate(self % matrix)
+    if (allocated(self % startWgt)) deallocate(self % startWgt)
 
     self % N = 0
     self % handleVirtual = .true.
