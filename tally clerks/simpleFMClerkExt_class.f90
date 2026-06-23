@@ -73,13 +73,15 @@ module simpleFMClerkExt_class
     ! NEW: Fundamental eigenvector for scaling particles
     real(defReal),dimension(:),allocatable       :: eigVec   
 
-    ! NEW: Stores NOT-normalized FM
+    ! NEW: Stores NOT-normalized FM for multiple cycles
+    ! This is a queue (FiLo)
     real(defReal), dimension(:,:,:), allocatable :: tallyMatrix
 
     ! NEW: Stores normalized FM
     real(defReal), dimension(:,:), allocatable   :: matrix
 
-    ! NEW: Stores the cumilative number of neutrons in the starting bin
+    ! NEW: Stores the cumilative number of neutrons in the starting bin for multiple cycles
+    ! This is a queue (FiLo)
     real(defReal),dimension(:,:),allocatable     :: startWgt
 
     ! Settings
@@ -232,16 +234,17 @@ contains
 
     if (self % doDebug) print *, '<aqz22> [simpleFMClerkext] cycle start'
 
+    ! NEW: pop the first element of the queues and create new element for the next cycle (FiLo)
     do i = 2, self % window
       self % startWgt(i - 1, : ) = self % startWgt(i, : )
       self % tallyMatrix(i - 1, : , : ) = self % tallyMatrix(i, : , : )
     end do
-
+    
     self % startWgt(self % window, : ) = ZERO
     self % tallyMatrix(self % window, : , : ) = ZERO
 
 
-    ! Loop through a population, calculate starting weight in each bin, add to latest in moving window
+    ! NEW: Loop through a population, calculate starting weight in each bin, add to latest in moving window
     do i = 1, start % popSize()
 
       associate (state => start % get(i))
@@ -254,6 +257,7 @@ contains
 
     end do
 
+    ! NEW: print if necessary
     if (self % doDebug) then
       print *, '<aqz22> [simpleFMClerkext] origin bin weights:'
       do i = 1, self % window
