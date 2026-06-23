@@ -9,9 +9,11 @@ import json
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import re
 from matplotlib.widgets import Slider, Button
 from scipy.optimize import root_scalar
 from pathlib import Path
+from scipy.stats import binom
 
 # all 1000 + 50
 
@@ -21,31 +23,54 @@ Sigma_s = Sigma_t-Sigma_a
 Sigma_f = Sigma_a
 Sigma_c = Sigma_a
 A = 1.0
-aHalf = 100
-LHalf = 100
-pop = 100000
+Sbins = 2
+aHalf = 25
+LHalf = 30
+pop = 2000
 
-readFromFile = True
-isHomg = True
-isFM = False
-fmBins = 8
+readFromFile = False
+isHomg = False
+isFM = True
+isConv = False
+fmBins = 2
+window = 10
 write = False
 
 file_path_tallies = Path(r"\\wsl$\Ubuntu\home\andijvie\SCONE\InputFiles\popRed.json")
 file_path_source = Path(r"\\wsl$\Ubuntu\home\andijvie\SCONE\InputFiles\Sources")
-#file_path_sourceFM = Path(r"\\wsl$\Ubuntu\home\andijvie\SCONE\InputFiles\sourcesFM")
-#file_path_sourceInit = Path(r"\\wsl$\Ubuntu\home\andijvie\SCONE\InputFiles\sourcesIn")
-#file_path_sourceS = Path(r"\\wsl$\Ubuntu\home\andijvie\SCONE\InputFiles\sourcesS")
 script_dir = str(Path(__file__).resolve().parent) + "\\data\\"
 ext = "_N" + str(pop) + "L" + str(LHalf) + "a" + str(aHalf) + ".npy"
 if isHomg:
     script_dir += "homg_"
     ext = "_N" + str(pop) + "L" + str(LHalf) + ".npy"
+if isConv:
+    ext = "_CONV" + ext
 if isFM:
-    ext = "_FM" + str(fmBins) + ext
+    ext = "_FM" + str(fmBins) + "w" + str(window) + ext
     
 with open(file_path_tallies, "r") as datafile:
     data = json.load(datafile)
+
+
+
+
+
+
+
+
+
+
+
+
+def SanalyticHom_stable(N, B):
+    p = 1 / B
+    k = np.arange(1, N + 1)
+
+    # P(K=k), where K ~ Binomial(N, 1/B)
+    probs = binom.pmf(k, N, p)
+
+    return np.log2(N) - (B / N) * np.sum(probs * k * np.log2(k))
+
 
 if readFromFile:
     shannon_entropy = np.load(script_dir + "S" + ext)
@@ -56,10 +81,11 @@ else:
 
 generations = np.arange(1, len(shannon_entropy) + 1)
 
-plt.figure()
+plt.figure(figsize=(16, 9))
 plt.plot(generations, shannon_entropy, marker=".", color = 'k')
 plt.xlabel("Generation")
 plt.ylabel("Shannon entropy")
+plt.axhline(SanalyticHom_stable(pop, Sbins), color = 'red', lw = 0.5)
 plt.tight_layout()
 plt.show()
 
@@ -121,10 +147,23 @@ cycle_slider = Slider(
     ax=ax_slider,
     label="Cycle",
     valmin=0,
-    valmax=fluxCycles / 2,
+    valmax= (fluxCycles - 1) / 2,
     valinit=cycle0,
     valstep=0.5
 )
+
+# y-limit slider
+ax_ylim = plt.axes([0.2, 0.05, 0.6, 0.03])
+
+ylim_slider = Slider(
+    ax=ax_ylim,
+    label="Y max",
+    valmin=0.005,
+    valmax=0.3,
+    valinit=0.1,
+    valstep=0.001
+)
+
 ax_prev = plt.axes([0.05, 0.1, 0.08, 0.04])
 btn_prev = Button(ax_prev, "◀")
 ax_next = plt.axes([0.85, 0.1, 0.08, 0.04])
@@ -137,7 +176,7 @@ def prev_cycle(event):
 
 def next_cycle(event):
     cycle = np.round(cycle_slider.val, 1)
-    if (not isFM and cycle < fluxCycles) or cycle < fluxCycles/2:
+    if cycle < (fluxCycles - 1) / 2:
         cycle_slider.set_val(cycle + 0.5)
 
 btn_prev.on_clicked(prev_cycle)
@@ -145,11 +184,18 @@ btn_next.on_clicked(next_cycle)
 
 def update(val):
     cycle = np.round(cycle_slider.val, 1)
+
     line.set_ydata(flux[int(cycle * 2)])
+
     ax.set_title(f"Cycle {cycle}")
+
+    # update y limit
+    ax.set_ylim((0, ylim_slider.val))
+
     fig.canvas.draw_idle()
 
 cycle_slider.on_changed(update)
+ylim_slider.on_changed(update)
 
 if isFM:
     for binX in np.linspace(-LHalf, LHalf, fmBins + 1):

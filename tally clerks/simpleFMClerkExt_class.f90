@@ -68,6 +68,7 @@ module simpleFMClerkExt_class
     integer(shortInt)            :: N = 0 ! Number of bins
     integer(shortInt)            :: window ! NEW: No. of cycles to save
     logical(defBool)             :: doDebug ! NEW: extra prints
+    logical(defBool)             :: forceOne ! NEW: forces a homogeneous eigenvector
 
     ! NEW: Fundamental eigenvector for scaling particles
     real(defReal),dimension(:),allocatable       :: eigVec   
@@ -181,6 +182,12 @@ contains
     ! NEW: extra prints:
     call dict % getOrDefault(self % doDebug, 'doDebug', .false.)
     if (self % doDebug) print *, '<aqz22> [simpleFMClerkext] DEBUG MESSAGES ENABLED' 
+  
+    ! NEW: force one:
+    call dict % getOrDefault(self % forceOne, 'forceOne', .false.)
+    if (self % forceOne) print *, '<aqz22> [simpleFMClerkext] FORCED HOMOGENEOUS EIGENVECTOR ENABLED' 
+
+  
 
   end subroutine init
 
@@ -382,6 +389,8 @@ contains
         end do
       end do
 
+      if (self % doDebug) print *, ''
+
       ! NEW: Obtain the fission matrix eigenvector
       call self % solve(mem)
     end if
@@ -457,6 +466,8 @@ contains
       print *,'<aqz22> [simpleFMClerkext] EV finished. Iterations: '
       print *, it
     end if
+
+    if (self % forceOne) self % eigVec = ONE
 
     print *,'FM Eigenvector:'
     print *, self % eigVec
