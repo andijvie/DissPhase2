@@ -1,0 +1,85 @@
+# all have w400 n10000
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Window sizes (excluding w=0 since it is plotted separately)
+a = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+              11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+              21, 22, 23, 24, 25, 26, 27, 28, 29, 30])
+noFM = np.array([
+    0.9999163682092556,
+    0.9998986615694166,
+    0.9998784191146883,
+    0.9998450034205233,
+    0.9998072078470825,
+    0.9997409480885312,
+    0.9996741543259559,
+    0.9995466690140845,
+    0.9994666873239436,
+    0.9991463191146882,
+    0.9988653820408161,
+    0.9985934420408163,
+    0.9976630948979592,
+    0.9973241273469389,
+    0.9952693173469388,
+    0.9925451177551021,
+    0.9852536426530613,
+    0.9855765114285714,
+    0.985210167755102,
+    0.9709067781632654
+])
+
+FM = np.array([
+    0.9999147414486921,
+    0.9999006448692153,
+    0.9998883378269618,
+    0.9998740855130784,
+    0.9998676247484909,
+    0.9998621621730384,
+    0.9998597971830987,
+    0.999852284305835,
+    0.9998480778672032,
+    0.9998441259557345,
+    0.9998452983673469,
+    0.9997672502040816,
+    0.9997232311827959, # wierd peak
+    0.9995810775510203,
+    0.9993415363265306,
+    0.9989599540816326, # EXTREME peak
+    0.997124498979592,
+    0.9941657853061224,
+    0.991229318367347,
+    0.9878351073118279 # EXTREME peak
+])
+
+
+err_noFM = 1 - noFM
+err_FM = 1 - FM
+
+plt.figure(figsize=(16,9))
+
+plt.semilogy(a, err_noFM, 'o-', label='1 - noFM')
+plt.semilogy(a, err_FM, 's-', label='1 - FM')
+
+plt.xlabel('Window size $a$')
+plt.ylabel(r'$1 - \mathrm{value}$')
+plt.grid(True, which='both', linestyle='--', alpha=0.6)
+plt.legend()
+
+plt.tight_layout()
+plt.show()
+
+plt.figure(figsize=(16,9))
+
+plt.semilogy(a, err_noFM - err_FM, 'o-', label='1 - noFM')
+
+plt.xlabel('Window size $a$')
+plt.ylabel(r'$1 - \mathrm{value}$')
+plt.grid(True, which='both', linestyle='--', alpha=0.6)
+plt.legend()
+
+plt.tight_layout()
+plt.show()
+
+
