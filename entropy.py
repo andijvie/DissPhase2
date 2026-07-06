@@ -35,16 +35,16 @@ def SanalyticHom_stable(N, B):
 
 
 
-#script_dir += "homg_"
+script_dir += "homg_"
 
 
 # vary fm bins
 LHalf = 200
-aHalf = 10
-LHalf = 11
+aHalf = 19
+#LHalf = 20
 pop = 100000
 pop = 10000
-pop = 2000
+pop = 1000
 #pop = 1000000
 fmBinss = np.array([2, 3, 4, 5, 6, 7, 8, 10, 20, 50])
 fmBinss = np.array([2, 3, 4, 5, 6, 8, 10, 20, 50])
@@ -55,16 +55,16 @@ fmBinss = np.array([2, 4, 6, 8])
 #fmBinss = np.array([2, 10, 20, 50])
 #fmBinss = np.array([10])
 fmBinss = np.array([5, 10])
-fmBinss = np.array([2])
-Sbins = 2
-window = 400
-isConv = False
+fmBinss = np.array([10])
+Sbins = 10
+window = 100
+isConv = True
 
 plt.figure(figsize=(16,9))
 i = 0
 for fmBins in fmBinss:
     ext = "_FM" + str(fmBins) + "w" + str(window) + "_N" + str(pop) + "L" + str(LHalf) + "a" + str(aHalf) + ".npy"
-    #ext = "_FM" + str(fmBins) + "w" + str(window) + "_N" + str(pop) + "L" + str(LHalf) + ".npy"
+    ext = "_FM" + str(fmBins) + "w" + str(window) + "_N" + str(pop) + "L" + str(LHalf) + ".npy"
     if isConv:
         ext = "_FM" + str(fmBins) + "w" + str(window) + "_CONV_N" + str(pop) + "L" + str(LHalf) + ".npy"
 
@@ -75,7 +75,7 @@ for fmBins in fmBinss:
     i += 1
 
 ext = "_N" + str(pop) + "L" + str(LHalf) + "a" + str(aHalf) + ".npy"
-#ext = "_N" + str(pop) + "L" + str(LHalf) + ".npy"
+ext = "_N" + str(pop) + "L" + str(LHalf) + ".npy"
 if isConv:
     ext = "_CONV_N" + str(pop) + "L" + str(LHalf) + ".npy"
 
@@ -93,8 +93,8 @@ plt.plot(generations, shannon_entropy, color = 'dimgrey', alpha = 0.5, linestyle
     
 
 
-#plt.axhline(SanalyticHom_stable(pop, Sbins), color = 'red', lw = 0.5)
-plt.axhline(1, color = 'red', lw = 0.5)
+plt.axhline(SanalyticHom_stable(pop, Sbins), color = 'red', lw = 0.5)
+#plt.axhline(1, color = 'red', lw = 0.5)
 plt.xlabel("Cycle", fontsize=12)
 plt.ylabel(r"Shannon entropy, $\mathcal{S}$", fontsize=12)
 plt.legend(fontsize=11.5, loc="lower right")
