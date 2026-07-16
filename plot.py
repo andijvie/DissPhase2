@@ -221,7 +221,7 @@ Sigma_s = Sigma_t-Sigma_a
 Sigma_f = Sigma_a
 Sigma_c = Sigma_a
 A = 1.0
-minEntr = 50
+minEntr = 5
 maxFlux = 399
 Sbins = 100
 aHalf = 19
@@ -232,12 +232,14 @@ readFromFile = False
 isHomg = True
 isFM = True
 isConv = True
-fmBins = 100
+fmBins = 5
 window = 50
 write = False
 animation = False
 
-file_path_tallies = Path(r"\\wsl$\Ubuntu\home\andijvie\SCONE\InputFiles\popRed5.json")
+fileExt = "3"
+
+file_path_tallies = Path(r"\\wsl$\Ubuntu\home\andijvie\SCONE\InputFiles\popRed" + fileExt + ".json")
 file_path_source = Path(r"\\wsl$\Ubuntu\home\andijvie\SCONE\InputFiles\Sources")
 script_dir = str(Path(__file__).resolve().parent) + "\\data\\"
 ext = "_N" + str(pop) + "L" + str(LHalf) + "a" + str(aHalf) + ".npy"
@@ -338,7 +340,7 @@ else:
     
     all_data_source = []
     for i in range(1, fluxCycles + 2):
-        filepathSource = os.path.join(file_path_source, f"popRed_source{i}.txt")
+        filepathSource = os.path.join(file_path_source, "popRed" + fileExt + f"_source{i}.txt")
         
         with open(filepathSource, "r") as sourcefile:
             values = [float(line.strip()) for line in sourcefile if line.strip()]

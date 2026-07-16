@@ -1,1 +1,1 @@
-\\wsl$\Ubuntu\home\andijvie\SCONE
+

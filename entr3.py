@@ -78,7 +78,7 @@ FM = np.array([
 err_noFM = 1 - noFM
 err_FM = 1 - FM
 
-plt.figure(figsize=(16,9))
+plt.figure(figsize=(8,13))
 
 plt.semilogy(a, err_noFM, 'o-', color = 'k', label='No FM')
 plt.semilogy(a, err_FM, 's-', color = 'darkgrey', linestyle = '--', label='With FM')
@@ -96,14 +96,13 @@ plt.show()
 
 
 
-plt.figure(figsize=(16,9))
+plt.figure(figsize=(8,13))
 
 plt.semilogy(a, crossingPerc/100, 'o-', color = 'k')
 
 plt.xlabel('Absorbing region half-length, $a$')
 plt.ylabel(r'Fraction of neutrons crossing per cycle')
 plt.grid(True, which='both', linestyle='--', alpha=0.6)
-plt.legend()
 
 plt.tight_layout()
 plt.show()
@@ -119,7 +118,7 @@ exit()
 
 
 
-plt.figure(figsize=(16,9))
+plt.figure(figsize=(8,15))
 
 plt.plot(crossingPerc, err_noFM - err_FM, 'o-', label='noFM - FM')
 plt.xscale('log')
