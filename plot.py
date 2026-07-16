@@ -12,13 +12,13 @@ import matplotlib.pyplot as plt
 import re
 import matplotlib as mpl
 from matplotlib.widgets import Slider, Button
-import imageio_ffmpeg
+#import imageio_ffmpeg
 from matplotlib.animation import FuncAnimation, FFMpegWriter, PillowWriter
 from scipy.optimize import root_scalar
 from pathlib import Path
 from scipy.stats import binom
 
-mpl.rcParams["animation.ffmpeg_path"] = imageio_ffmpeg.get_ffmpeg_exe()
+#mpl.rcParams["animation.ffmpeg_path"] = imageio_ffmpeg.get_ffmpeg_exe()
 
 
 # 1,2
@@ -221,23 +221,23 @@ Sigma_s = Sigma_t-Sigma_a
 Sigma_f = Sigma_a
 Sigma_c = Sigma_a
 A = 1.0
-minEntr = 100
-maxFlux = 2499
-Sbins = 2
+minEntr = 50
+maxFlux = 399
+Sbins = 100
 aHalf = 19
-LHalf = 20
-pop = 500
+LHalf = 100
+pop = 100000
 
 readFromFile = False
-isHomg = False
-isFM = False
-isConv = False
-fmBins = 2
-window = 300
+isHomg = True
+isFM = True
+isConv = True
+fmBins = 100
+window = 50
 write = False
-animation = True
+animation = False
 
-file_path_tallies = Path(r"\\wsl$\Ubuntu\home\andijvie\SCONE\InputFiles\popRed.json")
+file_path_tallies = Path(r"\\wsl$\Ubuntu\home\andijvie\SCONE\InputFiles\popRed5.json")
 file_path_source = Path(r"\\wsl$\Ubuntu\home\andijvie\SCONE\InputFiles\Sources")
 script_dir = str(Path(__file__).resolve().parent) + "\\data\\"
 ext = "_N" + str(pop) + "L" + str(LHalf) + "a" + str(aHalf) + ".npy"

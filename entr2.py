@@ -48,28 +48,54 @@ w0_100000 = 0.9999211979381444
 
 plt.figure(figsize=(16,9))
 
-plt.axhline(1 - w0_1000, ls='--', color = 'k', lw = 1.5 , label = 'No FM')
 plt.loglog(w, 1 - fm_1000, 'o-', label='N=1000')
 
 plt.loglog(w, 1 - fm_2000, 'o-', label='N=2000')
-plt.axhline(1 - w0_2000, ls='--', color = 'k', lw = 1.5)
 
 plt.loglog(w, 1 - fm_5000, 'o-', label='N=5000')
-plt.axhline(1 - w0_5000, ls='--', color = 'k', lw = 1.5)
 
 plt.loglog(w_10000, 1 - fm_10000, 'o-', label='N=10000')
-plt.axhline(1 - w0_10000, ls='--', color = 'k', lw = 1.5)
 
 plt.loglog(w_20000, 1 - fm_20000, 'o-', label='N=20000')
-plt.axhline(1 - w0_20000, ls='--', color = 'k', lw = 1.5)
 
 plt.loglog(w_100000, 1 - fm_100000, 'o-', label='N=100000')
-plt.axhline(1 - w0_100000, ls='--', color = 'k', lw = 1.5)
 
-plt.xlabel(r'Window size $w$ [cycles]')
-plt.ylabel(r'$1 - \mathcal{S}$')
+ax = plt.gca()
+
+no_fm_values = [
+    (1000,   1 - w0_1000),
+    (2000,   1 - w0_2000),
+    (5000,   1 - w0_5000),
+    (10000,  1 - w0_10000),
+    (20000,  1 - w0_20000),
+    (100000, 1 - w0_100000),
+]
+
+for i, (N, y) in enumerate(no_fm_values):
+    ax.axhline(
+        y,
+        ls="--",
+        color="k",
+        lw=1.5,
+        label="No FM" if i == 0 else None
+    )
+
+    ax.annotate(
+        f"N={N}",
+        xy=(0.99, y),
+        xycoords=("axes fraction", "data"),
+        xytext=(0, 3),                 # 3 points above the line
+        textcoords="offset points",
+        ha="right",
+        va="bottom",
+        fontsize=10,
+        color="black"
+    )
+
+plt.xlabel(r'Cycles tallied for FM')
+plt.ylabel(r'Clustering, $\mathcal{S}_N - \mathcal{S}$')
 plt.grid(True, which='both', alpha=0.3)
-plt.legend()
+plt.legend(loc = 'lower left')
 plt.tight_layout()
 plt.show()
 

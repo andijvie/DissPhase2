@@ -7,6 +7,11 @@ import matplotlib.pyplot as plt
 a = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
               11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
               21, 22, 23, 24, 25, 26, 27, 28])
+
+crossingPerc = np.array([
+    46.335950000000004, 28.1067, 18.555850000000003, 12.72145, 8.86324, 6.225935, 4.390725, 3.1032900000000003, 2.19314, 1.55503, 1.1000949999999998, 0.7793405, 0.552801, 0.3915885, 0.2773455, 0.196184, 0.139378, 0.09807499999999998, 0.0701196, 0.049047749999999994, 0.0347003, 0.02475565, 0.0173914, 0.01218095, 0.008876255000000001, 0.006289275, 0.004518635, 0.0030920550000000007
+])
+
 noFM = np.array([
     0.9999163682092556,
     0.9998986615694166,
@@ -79,7 +84,7 @@ plt.semilogy(a, err_noFM, 'o-', color = 'k', label='No FM')
 plt.semilogy(a, err_FM, 's-', color = 'darkgrey', linestyle = '--', label='With FM')
 
 plt.xlabel('Absorbing region half-length, $a$')
-plt.ylabel(r'$1 - \mathcal{S}$')
+plt.ylabel(r'Clustering, $\mathcal{S}_N - \mathcal{S}$')
 plt.grid(True, which='both', linestyle='--', alpha=0.6)
 plt.legend()
 
@@ -87,11 +92,38 @@ plt.tight_layout()
 plt.show()
 
 
-exit()
+
+
+
 
 plt.figure(figsize=(16,9))
 
-plt.semilogy(a, err_noFM - err_FM, 'o-', label='1 - noFM')
+plt.semilogy(a, crossingPerc/100, 'o-', color = 'k')
+
+plt.xlabel('Absorbing region half-length, $a$')
+plt.ylabel(r'Fraction of neutrons crossing per cycle')
+plt.grid(True, which='both', linestyle='--', alpha=0.6)
+plt.legend()
+
+plt.tight_layout()
+plt.show()
+
+# the eigenvectors of a diagonal matrix is just the basisvectors with eigenvalues on the diagonal
+# therefore any decoupled systems will simply end up with one of the systems being selected as the 'default'
+
+# for the future: change N such that S_noFM is identical while varying a
+
+exit()
+
+
+
+
+
+plt.figure(figsize=(16,9))
+
+plt.plot(crossingPerc, err_noFM - err_FM, 'o-', label='noFM - FM')
+plt.xscale('log')
+plt.yscale('symlog', linthresh=1e-6)  # adjust linthresh to your data
 
 plt.xlabel('Window size $a$')
 plt.ylabel(r'$1 - \mathrm{value}$')
@@ -100,5 +132,7 @@ plt.legend()
 
 plt.tight_layout()
 plt.show()
+
+
 
 
