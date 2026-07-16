@@ -66,7 +66,7 @@ plt.axhline(1 - w0_20000, ls='--', color = 'k', lw = 1.5)
 plt.loglog(w_100000, 1 - fm_100000, 'o-', label='N=100000')
 plt.axhline(1 - w0_100000, ls='--', color = 'k', lw = 1.5)
 
-plt.xlabel(r'Window size $w$ [generations]')
+plt.xlabel(r'Window size $w$ [cycles]')
 plt.ylabel(r'$1 - \mathcal{S}$')
 plt.grid(True, which='both', alpha=0.3)
 plt.legend()

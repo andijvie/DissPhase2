@@ -66,6 +66,7 @@ module simpleFMClerkExt_class
     type(macroResponse)          :: resp
     integer(shortInt)            :: N = 0 ! Number of bins
     integer(shortInt)            :: window ! NEW: No. of cycles to save
+    integer(shortInt)            :: thisCycle, firstCycle ! NEW: No. of cycles to skip
     logical(defBool)             :: doDebug ! NEW: extra prints
     logical(defBool)             :: isTally ! NEW: Only tally no FM acceleration
     logical(defBool)             :: forceOne ! NEW: forces a homogeneous eigenvector
@@ -150,9 +151,15 @@ contains
     print *, '<aqz22> [simpleFMClerkext] FM-window cycles set to:'
     print *, self % window
 
+    ! NEW: read first cycle
+    call dict % getOrDefault(self % firstCycle, 'skipCycles', 0)
+    print *, '<aqz22> [simpleFMClerkext] Number of cycles to skip:'
+    print *, self % firstCycle
+    self % thisCycle = 0
+
     ! NEW: check if tally:
     call dict % getOrDefault(self % isTally, 'isTally', .false.)
-    if (self % forceOne) then
+    if (self % isTally) then
       print *, '<aqz22> [simpleFMClerkext] FM CLERK IS TALLY'
       self % window = 1 
     end if  
@@ -226,6 +233,8 @@ contains
     class(particleDungeon), intent(in)           :: start
     type(scoreMemory), intent(inout)             :: mem
     integer(shortInt)                            :: idx, i
+
+    self % thisCycle = self % thisCycle + 1
 
     if (self % doDebug) print *, '<aqz22> [simpleFMClerkext] cycle start'
 
@@ -369,6 +378,14 @@ contains
       end do
 
       if (.not. self % isTally) then
+
+            if (self % thisCycle <= self % firstCycle) then
+              print *, '<aqz22> [simpleFMClerkext] FM tally disabled'
+              self % eigVec = ZERO
+              self % startWgt(self % window, : ) = ZERO
+              self % tallyMatrix(self % window, : , : ) = ZERO
+              return
+            end if
         
         ! New: normalize moving average FM
         if (self % doDebug) print *, '<aqz22> [simpleFMClerkext] normalise FM factors:'
@@ -618,6 +635,7 @@ contains
     if (allocated(self % startWgt)) deallocate(self % startWgt)
 
     self % N = 0
+    self % thisCycle = 0
     self % handleVirtual = .true.
 
     call self % resp % kill()

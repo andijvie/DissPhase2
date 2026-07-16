@@ -1,1 +1,1 @@
-fluxCycles
+\\wsl$\Ubuntu\home\andijvie\SCONE
