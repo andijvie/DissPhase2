@@ -724,5 +724,121 @@ ani.save(
     writer=FFMpegWriter(fps=30, bitrate=3000)
 )
 
+entropy_dot, = ax_entropy.plot(
+    [gen_anim[0]],
+    [entropy_anim[0]],
+    marker="o",
+    color="red",
+    markersize=8
+)
+
+ax_entropy.set_xlabel("Generation")
+ax_entropy.set_ylabel("Shannon entropy")
+ax_entropy.set_xlim(generations[0], generations[-1])
+
+ymin = np.nanmin(shannon_entropy)
+ymax = np.nanmax(shannon_entropy)
+yrange = ymax - ymin if ymax > ymin else 1
+ax_entropy.set_ylim(ymin - 0.05 * yrange, ymax + 0.05 * yrange)
+
+if isHomg:
+    ax_entropy.axhline(
+        SanalyticHom_stable(pop, Sbins),
+        color="red",
+        lw=0.8,
+        linestyle="--",
+        label="Analytic homogeneous entropy"
+    )
+else:
+    ax_entropy.axhline(
+        1,
+        color="red",
+        lw=0.8,
+        linestyle="--"
+    )
+
+ax_entropy.legend(loc="lower right")
+
+# -------------------------
+# Bottom plot: flux profile
+# -------------------------
+if isHomg:
+    flux_line, = ax_flux.plot(
+        x_centers,
+        flux_whole[0],
+        marker=".",
+        color="k",
+        lw=1
+    )
+else:
+    flux_bar = ax_flux.bar(
+        x_centers,
+        flux_whole[0],
+        1,
+        lw = 1,
+        color = 'grey',
+        edgecolor = 'k'
+    )
+
+ax_flux.set_xlabel("x")
+ax_flux.set_ylabel("Normalized neutron source")
+ax_flux.set_xlim((-LHalf, LHalf))
+
+flux_ymax = np.nanmax(flux_whole)
+ax_flux.set_ylim(0, 1.05 * flux_ymax)
+
+title = ax_flux.set_title(f"Generation {gen_anim[0]}", y=-0.14)
+
+
+# Optional FM bin markers
+if isFM:
+    for binX in np.linspace(-LHalf, LHalf, fmBins + 1):
+        ax_flux.axvline(
+            binX,
+            linestyle="--",
+            color="lightgrey",
+            lw=1
+        )
+
+
+# If aHalf exists and you want the material/interface markers:
+if not isHomg:
+    ax_flux.axvline(-aHalf, linestyle="--", color="lightgrey", lw=1)
+    ax_flux.axvline( aHalf, linestyle="--", color="lightgrey", lw=1)
+
+
+def update(frame):
+    current_gen = gen_anim[frame]
+
+    if isHomg:
+        flux_line.set_ydata(flux_whole[frame])
+    else:
+        for bar, height in zip(flux_bar, flux_whole[frame]):
+            bar.set_height(height)
+
+    entropy_dot.set_data(
+        [current_gen],
+        [entropy_anim[frame]]
+    )
+
+    title.set_text(f"Generation {current_gen}")
+
+    if isHomg:
+        return flux_line, entropy_dot, title
+    return flux_bar, entropy_dot, title
+
+
+ani = FuncAnimation(
+    fig,
+    update,
+    frames=n_frames,
+    interval=100,
+    blit=False
+)
+
+ani.save(
+    script_dir + "flux_entropy_animation.mp4",
+    writer=FFMpegWriter(fps=30, bitrate=3000)
+)
 plt.show()
 
